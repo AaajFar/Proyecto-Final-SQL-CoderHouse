@@ -33,7 +33,7 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 tipo ENUM('clavijas', 'microfonos', 'maderas', 'cuerdas') NOT NULL,
 marca VARCHAR(60) DEFAULT NULL,
 modelo VARCHAR(60) NOT NULL,
-descripcion VARCHAR(100),
+descripcion VARCHAR(100) DEFAULT NULL,
 stock INT UNSIGNED NOT NULL,
 costo FLOAT NOT NULL
 ) ENGINE=INNODB;
@@ -90,11 +90,11 @@ mail VARCHAR(60) NOT NULL DEFAULT 'Pedir mail'
 CREATE TABLE IF NOT EXISTS direcciones_envio
 (
 id INT AUTO_INCREMENT PRIMARY KEY,
-cliente INT NOT NULL,
+cliente_id INT NOT NULL,
 direccion VARCHAR(200) NOT NULL,
 localidad VARCHAR(60) NOT NULL,
 provincia VARCHAR(30) NOT NULL,
-FOREIGN KEY (cliente) REFERENCES fabrica_guitarras.clientes(id)
+FOREIGN KEY (cliente_id) REFERENCES fabrica_guitarras.clientes(id)
 ) ENGINE=INNODB;
 
 -- Tabla de pedidos
@@ -314,7 +314,7 @@ v_precia_venta donde el id de la guitarra sea igual al id_guitarra ingresado al 
 v_mat_rest haciendo un SELECT del stock de guitarras ingresado en la tabla guitarras por la cantidad de material utilizada que
 ingresamos al llamar al SP donde el id de la guitarra sea igual al id_guitarra ingresado al llamar al SP. En el ultimo
 paso con este valor hacemos un UPDATE en la tabla materiales diciendole que el stock va a ser igual al stock actual menos
-la variable v_mat_rest donde el id del material sea igual al id_material ingresado al llamar al SP. Es muy benificioso 
+la variable v_mat_rest donde el id del material sea igual al id_material ingresado al llamar al SP. Es muy beneficioso 
 para el sistema ya que cada vez que ingresamos un material a la guitarra va a ir sumando los costos de los materiales 
 ya multiplicados por el valor total a marcar para la venta de productos y cuando finalicemos de cargar los materiales 
 tendremos el valor de venta de la guitarra, y a su vez nos va a descontar los materiales utilizados para la fabricacion
@@ -734,9 +734,10 @@ USE fabrica_guitarras;
 DELIMITER ;
 
 /* Vista #1: Sirve para saber el costo de fabricación de todas las guitarras. El resultado que arroja es la sumatoria
-de los costos de los materiales y el id de cada una de las guitarras gracias al filtro GROUP BY que hace que se 
-agrupen por id. Interactua con las tablas materiales, materiales_guitarras y guitarras y es de gran utilidad 
-ya que haciendo filtros podríamos obtener el costo de una sola guitarra o determinadas guitarras que querramos saber.*/
+de los costos de los materiales (esto lo logramos con la función SUM de MySQL) y el id de cada una de las guitarras 
+gracias al filtro GROUP BY que hace que se agrupen por id. Interactua con las tablas materiales, materiales_guitarras 
+y guitarras y es de gran utilidad ya que haciendo filtros podríamos obtener el costo de una sola guitarra o determinadas 
+guitarras que querramos saber.*/
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_costo_guitarras
@@ -758,9 +759,10 @@ WHERE id_guitarra = 5; */
 WHERE id_guitarra IN (5,6,7); */
 
 
-/* Vista #2: Sirve para saber el valor total de mis ventas y en que cantidad de pedidos. Interactua solamente con la 
-tabla pedidos haciendo el conteo de id de pedidos (cantidad de pedidos en que se vendio) y
-la sumatoria de los precios (total vendido).*/
+/* Vista #2: Sirve para saber el valor total de mis ventas (esto lo logramos gracias a la función SUM de MySQL) 
+y en que cantidad de pedidos (esto lo logramos gracias a la función COUNT de MySQL). Interactúa solamente con 
+la tabla pedidos haciendo el conteo de id de pedidos (cantidad de pedidos en que se vendió) y la sumatoria de 
+los precios (total vendido).*/
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_total_ventas
@@ -772,9 +774,12 @@ FROM pedidos ped
 
 -- SELECT * FROM vs_total_ventas;
 
-/* Vista #3: Sirve para obtener los datos importantes de los proveedores del tipo de material "maderas". Interactua
-con las tablas proveedores, proveedores_materiales y materiales, de gran utilidad para obtener una vista rapida
-de mis proveedores para materiales que son de los mas utilizados en la fabrica. */
+/* - Vista #3: Sirve para obtener los datos importantes de los proveedores del tipo de material "maderas". 
+A través de los INNER JOIN podemos combinar la información usando el filtro WHERE para que solo nos traiga 
+información de los proveedores del tipo de material maderas, y con el GROUP BY los agrupamos para no tener 
+información repetida. Interactúa con las tablas proveedores, proveedores_materiales y materiales, de gran 
+utilidad para obtener una vista rápida de mis proveedores para materiales que son de los más utilizados 
+en la fábrica. */
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_proveedores_maderas
@@ -793,14 +798,15 @@ GROUP BY prov.nombre;
 /* SELECT * FROM vs_proveedores_maderas
 WHERE mail LIKE 'pedir mail'; */
 
-/* Vista #4: Sirve para ver todos los pedidos junto a su valor y direccion de envio. Interactua con las tablas pedidos,
-clientes y direcciones_envio, dando un vistazo rapido al pedido, su valor y su direccion de envio. De gran utilidad
-para poder identificar a donde hay que enviar cada pedido, tambien se puede utilizar el filtro WHERE para filtrar
-por el id_pedido y obtener esta misma informacion de uno o mas pedidos determinados. */
+/* Vista #4: Sirve para ver todos los pedidos junto a su valor y dirección de envío. Interactúa con las 
+tablas pedidos, clientes y direcciones_envio, dando un vistazo rápido al pedido, su valor y su dirección 
+de envío, esto lo logramos gracias a los INNER JOIN que nos trae información de las tablas que necesitamos. 
+De gran utilidad para poder identificar a donde hay que enviar cada pedido, también se puede utilizar el 
+filtro WHERE para filtrar por el id_pedido y obtener esta misma información de uno o más pedidos determinados. */
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_pedidos_clientes
-AS SELECT ped.id id_pedido, ped.precio_total valor, CONCAT (cl.nombre, ' ', cl.apellido) nombre_apellido, 
+AS SELECT ped.id id_pedido, ped.precio_total valor, CONCAT(cl.nombre, ' ', cl.apellido) nombre_apellido, 
 dir.direccion direccion_envio, dir.localidad, dir.provincia
 FROM pedidos ped
 INNER JOIN clientes cl ON ped.cliente_id = cl.id
@@ -819,11 +825,13 @@ WHERE nombre_apellido LIKE '%carolina%'; */
 WHERE localidad LIKE 'rosario'; */
 
 
-/* Vista #5: Sirve para saber que materiales necesito para fabricar cada guitarra. Interactua con las tablas materiales,
-materiales_guitarras y guitarras obteniendo el id de la guitarra, el tipo, y los materiales que la componen con sus
-respectivos tipos y id. Es de gran utilidad ya que si necesito saber que materiales necesito para fabricar una determinada
-guitarra puedo utilizar el filtro WHERE con la vista pasandole el id_guitarra para que solo me devuelva esos datos, o
-bien podriamos usar el filtro WHERE con el id del material para saber que guitarras utilizan determinado material. */
+/* Vista #5: Sirve para saber que materiales necesito para fabricar cada guitarra. Interactúa con las tablas 
+materiales, materiales_guitarras y guitarras obteniendo el id de la guitarra, el tipo, y los materiales que 
+la componen con sus respectivos tipos e id, esto lo logramos gracias a los INNER JOIN que nos trae información 
+de las tablas que necesitamos. Es de gran utilidad ya que si necesito saber que materiales necesito para 
+fabricar una determinada guitarra puedo utilizar el filtro WHERE con la vista pasándole el id_guitarra para 
+que solo me devuelva esos datos, o bien podríamos usar el filtro WHERE con el id del material para saber que 
+guitarras utilizan determinado material. */
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_material_p_guitarra
@@ -845,10 +853,14 @@ WHERE id_guitarra = 11; */
 WHERE id_material = 5; */
 
 
-/* Vista #6: para saber de que materiales tengo stock bajo junto con los datos del proveedor que lo vende. Interactua
-con las tablas materiales, proveedores_materiales y proveedores. Es de gran utilidad para hacer reposicion de materiales
-ya que podemos saber de forma rapida cual es el stock bajo y quien es el que lo provee de estos materiales, tambien con
-el filtro WHERE podriamos traer stock bajo de determinados tipos de materiales o de determinados proveedores. */
+/* Vista #6: Sirve para saber de qué materiales tengo stock bajo junto con los datos del proveedor 
+que lo vende. Interactúa con las tablas materiales, proveedores_materiales y proveedores, con los 
+INNER JOIN matcheamos las tablas de las cuales necesitamos traer la información, y gracias al filtro 
+WHERE le indicamos que el stock del material tiene que ser menor o igual a 500 para que solo nos traiga 
+los resultados inferiores a ese número. Es de gran utilidad para hacer reposición de materiales ya que 
+podemos saber de forma rápida cual es el stock bajo y quien es el que lo provee de estos materiales, 
+también con el filtro WHERE podríamos traer stock bajo de determinados tipos de materiales o de 
+determinados proveedores.*/
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_stock_bajo_materiales
@@ -870,10 +882,12 @@ WHERE tipo LIKE 'cuerdas'; */
 /* SELECT * FROM vs_stock_bajo_materiales
 WHERE nombre_proveedor LIKE '%tres%'; */
 
-/* Vista #7: Sirve para saber de que guitarras tengo stock bajo para fabricar mas. Interactua solamente con la tabla
-guitarras, dando un vistazo rapido de las guitarras que tienen menos de 200 unidades de stock con su id, tipo y modelo.
-Con el filtro WHERE podriamos traer stock bajo de guitarras de determinado tipo que es un detalle interesante si por
-ejemplo solo quisieramos saber de que guitarras electricas tenemos stock bajo. */
+/* Vista #7: Sirve para saber de qué guitarras tengo stock bajo para fabricar más. Interactúa solamente 
+con la tabla guitarras, dando un vistazo rápido de las guitarras que tienen menos de 200 unidades de 
+stock con su id, tipo y modelo, esto lo logramos gracias al filtro WHERE indicándole que el stock tiene 
+que ser menor o igual a 200 para que solo nos traiga los resultados inferiores a ese número. Con el 
+filtro WHERE podríamos traer stock bajo de guitarras de determinado tipo que es un detalle interesante 
+si por ejemplo solo quisiéramos saber de qué guitarras eléctricas tenemos stock bajo. */
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_stock_bajo_guitarras
@@ -890,8 +904,10 @@ WHERE stock <= 200;
 WHERE tipo LIKE '%clasica%'; */
 
 
-/* Vista #8: Sirve para saber cual es el promedio de ventas y en que cantidad de pedidos. Interactua solamente
-con la tabla pedidos. */
+/* Vista #8: Sirve para saber cuál es el promedio de ventas y en qué cantidad de pedidos. Interactúa 
+solamente con la tabla pedidos, esto lo logramos gracias a la función AVG en el caso del promedio de 
+ventas y a la función COUNT en el caso de cantidad de pedidos, una forma rápida de tener un vistazo 
+del promedio de ventas.  */
 
 DELIMITER //
 CREATE OR REPLACE VIEW vs_promedio_ventas
@@ -910,27 +926,30 @@ DELIMITER //
 USE fabrica_guitarras;
 // DELIMITER ;
 
-/* Funcion #1: Sirve para calcular el costo de un pedido mediante el id del mismo, hace la sumatoria de los costos de los
-materiales segun el id de pedido que se ingrese multiplicandolo por la cantidad del pedido, dando como resultado el 
-costo total para ese pedido. Interactua con las tablas materiales, materiales_guitarras, guitarras y pedidos_detalle. 
-Es de gran utilidad a la hora de ingresar un pedido nuevo para saber cual seria el costo de fabricacion del mismo.*/
+/* Funcion #1: Sirve para calcular el costo de un pedido mediante el id del mismo. Declaramos la variable 
+v_resultado la cual va a guardar la sumatoria de los costos de los materiales según el id de pedido que 
+se ingrese al llamar a la FX multiplicándolo por la cantidad del pedido, dando como resultado el costo total 
+para ese pedido, esto con ayuda de los INNER JOIN que nos traen información de las tablas que necesitamos y 
+el filtro WHERE al cual le indicamos que el id del pedido tiene que ser el mismo que ingresamos al llamar a 
+la FX. Interactúa con las tablas materiales, materiales_guitarras, guitarras y pedidos_detalle. Es de gran 
+utilidad a la hora de ingresar un pedido nuevo para saber cuál sería el costo de fabricación del mismo.*/
 
 DELIMITER //
 CREATE FUNCTION `fx_calc_cst_ped` (id INT)
 RETURNS FLOAT
 READS SQL DATA
 BEGIN
-	DECLARE resultado FLOAT;
+	DECLARE v_resultado FLOAT;
     
     SELECT SUM((mat.costo * mg.cantidad) * pd.guit_cant)
-    INTO resultado
+    INTO v_resultado
 	FROM materiales mat
 	INNER JOIN materiales_guitarras mg ON mg.mat_id = mat.id
 	INNER JOIN guitarras guit ON guit.id = mg.guit_id
     INNER JOIN pedidos_detalle pd ON pd.guit_id = guit.id
 	WHERE pd.ped_id = id;
     
-	RETURN resultado;
+	RETURN v_resultado;
 END
 // DELIMITER ;
 
@@ -939,53 +958,61 @@ END
 -- SELECT fx_calc_cst_ped(11);
 
 
-/* Funcion #2: Sirve para calcular el costo de fabricacion de una guitarra mediante el id de la misma, hace la sumatoria
-de los costos de materiales segun el id de guitarra que se haya ingresado y devuelve el total. Interactua con las tablas
-materiales, materiales_guitarras y guitarras, de gran utilidad para saber el costo de una guitarra de forma rapida, bien
-podriamos multiplicar la funcion por el numero de guitarras que queremos fabricar para obtener el costo total del proceso. */
+/* Funcion #2: Sirve para calcular el costo de fabricación de una guitarra mediante el id de la misma. 
+Declaramos la variable v_resultado la cual va a guardar la sumatoria de los costos de materiales según 
+el id de guitarra y devuelve el total, esto lo logramos gracias a la función SUM para sumar los costos, 
+los INNER JOIN para traer la información necesaria, y el filtro WHERE donde indicamos que el id de la 
+guitarra tiene que ser igual al id ingresado al llamar al SP. Interactúa con las tablas materiales,
+materiales_guitarras y guitarras, de gran utilidad para saber el costo de una guitarra de forma rápida, 
+bien podríamos multiplicar la función por el número de guitarras que queremos fabricar para obtener el 
+costo total del proceso. También nos será muy útil mas adelante para el Stored Procedure de actualización 
+de costo de un material para poder actualizar también el nuevo precio de venta de una guitarra en base al 
+nuevo costo del material.  */
 
 DELIMITER //
 CREATE FUNCTION `fx_calc_cst_guit`(id INT) 
 RETURNS FLOAT
 READS SQL DATA
 BEGIN
-	DECLARE resultado FLOAT;
+	DECLARE v_resultado FLOAT;
     
     SELECT SUM(mat.costo)
-    INTO resultado
+    INTO v_resultado
 	FROM materiales mat
 	INNER JOIN materiales_guitarras mg ON mg.mat_id = mat.id
 	INNER JOIN guitarras guit ON guit.id = mg.guit_id
 	WHERE guit.id = id;
     
-	RETURN resultado;
+	RETURN v_resultado;
 END
 // DELIMITER ;
 
--- Pruebas para funcion #3 'fx_calc_cst_guit'
+-- Pruebas para funcion #2 'fx_calc_cst_guit'
 
 -- SELECT fx_calc_cst_guit(2);
 
 -- SELECT fx_calc_cst_guit(10) * 50;
 
-/* Funcion #3: Sirve para calcular cuantos pedidos realizo un cliente mediante el id del mismo, hace un conteo de id
-interactuando con la tabla pedidos y devuelve el total de ese conteo. Puede ser util para sacar estadisticas
-de quienes son los clientes que mas compras realizan y en base a eso definir de que forma pueden pagar o si tienen
-algun tipo de descuento.*/
+/* Funcion #3: Sirve para calcular cuántos pedidos realizo un cliente mediante el id del mismo. Declaramos 
+la variable v_resultado que va a guardar el resultado del conteo de cantidad de pedidos, esto lo logramos 
+gracias a la función COUNT donde como parámetro le pasamos el id que ingresamos al llamar al SP y al filtro 
+WHERE donde le indicamos que el id del cliente tiene que ser igual también al id que ingresamos. Puede ser 
+útil para sacar estadísticas de quienes son los clientes que más compras realizan y en base a eso definir de 
+qué forma pueden pagar o si tienen algún tipo de descuento.*/
 
 DELIMITER //
 CREATE FUNCTION `fx_calc_ctped_cl`(id INT) 
 RETURNS INT
 READS SQL DATA
 BEGIN
-	DECLARE resultado INT;
+	DECLARE v_resultado INT;
     
 	SELECT COUNT(id)
-    INTO resultado
+    INTO v_resultado
 	FROM pedidos
 	WHERE cliente_id = id;
     
-	RETURN resultado;
+	RETURN v_resultado;
 END
 // DELIMITER ;
 
@@ -998,35 +1025,38 @@ FROM clientes cl
 WHERE id = 4; */
 
 
-/* Funcion #4: Sirve para calcular cuantos dias pasaron desde el ultimo pedido que hizo un cliente mediante su id,
-con la variable fecha 1 guarda la ultima fecha en la realizo un pedido segun el id que se ingrese, con la variable
-fecha 2 guarda la fecha actual, luego en la variable resultado sacamos la diferencia entre estas dos para obtener
-el total de dias. Interactua solamente con la tabla pedidos y es de gran utilidad para saber si por ejemplo paso
-mucho tiempo desde que un cliente no realiza un pedido. */
+/* Funcion #4: Sirve para calcular cuántos días pasaron desde el ultimo pedido que hizo un cliente 
+mediante su id. Con la variable v_fecha1  guardamos la última fecha en la que realizó un pedido 
+según el id que se ingrese al llamar a la FX, esto lo logramos gracias al ORDER BY de manera 
+descendente y limitando los resultados a 1 en la consulta, con la variable v_fecha2 guardamos la 
+fecha actual gracias al método CURDATE, luego en la variable v_resultado sacamos la diferencia 
+entre estas dos para obtener el total de días gracias al método DATEDIFF. Interactúa solamente 
+con la tabla pedidos y es de gran utilidad para saber si por ejemplo paso mucho tiempo desde que 
+un cliente no realiza un pedido. */
 
 DELIMITER //
 CREATE FUNCTION `fx_calc_ctdi_ultped`(id INT) 
 RETURNS INT
 READS SQL DATA
 BEGIN
-	DECLARE fecha1 DATE;
-    DECLARE fecha2 DATE;
-    DECLARE resultado INT;
+	DECLARE v_fecha1 DATE;
+    DECLARE v_fecha2 DATE;
+    DECLARE v_resultado INT;
     
 	SELECT ped.fecha
-    INTO fecha1
+    INTO v_fecha1
 	FROM pedidos ped
 	WHERE cliente_id = id
 	ORDER BY fecha DESC
 	LIMIT 1;
     
     SELECT CURDATE() FROM DUAL
-    INTO fecha2;
+    INTO v_fecha2;
     
-    SELECT DATEDIFF(fecha2,fecha1)
-    INTO resultado;
+    SELECT DATEDIFF(v_fecha2,v_fecha1)
+    INTO v_resultado;
     
-	RETURN resultado;
+	RETURN v_resultado;
 END
 // DELIMITER ;
 
@@ -1039,23 +1069,26 @@ FROM clientes cl
 WHERE cl.id = 5; */
 
 
-/* Funcion #5: Sirve para calcular cantidad de pedidos entre 2 fechas que ingrese el usuario, la funcion hace un conteo
-del campo id en la tabla pedidos segun los parametros que se ingresan en la funcion y devuelve el total. Es de gran
-utilidad para saber cuantos pedidos se tuvo en un determinado periodo de forma rapida. */
+/* Funcion #5: Sirve para calcular la cantidad de pedidos entre 2 fechas que ingrese el usuario. 
+La función recibe como parámetros las dos fechas entre las cuales queremos saber el total, 
+declaramos una variable v_resultado done vamos a guardar esta diferencia, luego le damos valor 
+haciendo una consulta con el método COUNT haciendo un conteo del campo id de la tabla pedidos y 
+con el filtro WHERE decimos que la fecha tiene que estar entre las dos ingresadas al llamar a la FX. 
+Es de gran utilidad para saber cuántos pedidos se tuvo en un determinado periodo de forma rápida.*/
 
 DELIMITER //
 CREATE FUNCTION `fx_calc_ctped_xfech`(fecha1 DATE, fecha2 DATE) 
 RETURNS INT
 READS SQL DATA
 BEGIN
-    DECLARE resultado INT;
+    DECLARE v_resultado INT;
     
 	SELECT COUNT(id)
-    INTO resultado
+    INTO v_resultado
 	FROM pedidos
 	WHERE fecha BETWEEN fecha1 AND fecha2;
     
-	RETURN resultado;
+	RETURN v_resultado;
 END
 // DELIMITER ;
 
@@ -1064,9 +1097,9 @@ END
 -- SELECT fx_calc_ctped_xfech('2022-01-01', '2022-01-31');
 
 
--- Creacion de Stored Procedure
+-- Creacion de Stored Procedures
 
-/* Store Procedure #1: Sirve para ordenar la tabla de guitarras según los parametros que ingresa
+/* Stored Procedure #1: Sirve para ordenar la tabla de guitarras según los parametros que ingresa
 el usuario. En total recibe 2 parametros, el primero corresponde a sobre que campo se va a hacer
 el orden, el segundo corresponde a la forma en que se va a hacer ese orden (ASC, DESC).
 Para poder realizarlo utilicé el condicional CASE para cada caso, de tal forma que cuando se llama
@@ -1097,7 +1130,7 @@ BEGIN
 END
 // DELIMITER ;
 
--- Prueba para Stored Procedure #1 'sp_orden_guitarras'
+-- Pruebas para Stored Procedure #1 'sp_orden_guitarras'
 
 -- Por precio descendente
 -- CALL sp_orden_guitarras(6,2);
@@ -1135,10 +1168,9 @@ END
 -- Opcion ROLLBACK;
 -- ROLLBACK;
 
-/* Store Procedure #3: Sirve para ingresar nuevos clientes, cuando se lo llama
-se ingresan los parametros de nombre, apellido, direccion, telefono y mail y crea un nuevo
-registro en la tabla de clientes con el proximo id. Una forma rapida y simple de 
-ingresar un nuevo cliente.*/
+/* Store Procedure #3: Sirve para ingresar nuevos clientes, cuando se lo llama se ingresan los 
+parámetros de nombre, apellido, dirección, teléfono y mail y crea un nuevo registro en la tabla 
+de clientes con el próximo id. Una forma rápida y simple de ingresar un nuevo cliente.*/
 
 DELIMITER //
 CREATE PROCEDURE sp_ingresar_cliente (IN nombre VARCHAR(45),
@@ -1161,6 +1193,10 @@ END
 
 -- Opcion ROLLBACK
 -- ROLLBACK;
+
+/* NOTA: En el caso de hacer un ROLLBACK por las dudas hacer un alter table de la tabla clientes, ir al 
+a solapa options y volver el Auto Increment a 11. */
+
 
 /* Stored Procedure #4: Sirve para ingresar stock de las guitarras fabricadas, su gran ventaja
 es que también hace una actualización del stock de los materiales utilizados para la fabricacion.
@@ -1240,7 +1276,8 @@ END
 -- Prueba para Stored Procedure #4 'sp_actstock_guitarra'
 
 /* Hacemos una actualizacion de la guitarra con id 1 y le ingresamos 30 unidades al stock en una transaccion, 
-todo funciona correctamente */
+todo funciona correctamente, podemos chequear que tambien se restaron las unidades correspondientes de los
+materiales con id 4, 12, 24 y 29, podemos ver esta relacion en la tabla materiales_guitarras. */
 
 /*
 DELIMITER //
@@ -1264,16 +1301,109 @@ CALL sp_actstock_guitarra(2, 1500);
 // DELIMITER ;
 */
 
+/* Stored procedure #5: Sirve para actualizar el costo de un material (ya sea que haya bajado o subido su valor),
+y es de gran utilidad ya segun el id del material selecciona todas las guitarras que utilicen el mismo y actualiza
+su precio de venta en base al nuevo costo del material. Los parametros que va a recibir cuando lo llamamos son el
+id del material que queremos actualizar y su costo. Declaramos una variable llamada v_idguit que nos va a ayudar
+a obtener todos los id de guitarras que usen ese material gracias a un cursor y otra variable llamada v_finbucle
+que nos ayudara a detener el loop del cursor. Declaramos el cursor llamado cursorguit para que seleccione todos 
+los id de guitarra de la tabla materiales_guitarras donde el id del material coincida con el id ingresado al 
+llamar al SP, luego declaramos un CONTINUE HANDLER para NOT FOUND (no encuentras mas resultados) y seteamos la 
+variable v_finbucle con valor 1 para que detenga el loop. Primero hacemos un UPDATE en la tabla materiales y 
+actualizamos el costo con el valor ingresado al llamar al SP donde el id de material coincida con el id ingresado 
+al llamar al SP (es importante que esto sea primero ya que sino queda dentro del loop). Ahora si abrimos el cursor
+y declaramos al bucle como LOOP, luego hacemos un FETCH del cursor a la variable v_idguit, la cual va actualizando 
+su valor con todos los id de guitarra que correspondan al material, ponemos un condicional IF para que cuando la
+variable v_finbucle sea igual a 1 haga un LEAVE del bucle, esto gracias al CONTINUE HANDLER declarado anteriormente.
+Como ultimos pasos hacemos un UPDATE en la tabla guitarras y le decimos que actualice el precio (aqui utilizamos la
+funcion 'fx_calc_cst_guit' la cual nos va a ayudar a calcular el nuevo costo de la guitarra con el costo del material
+actualizado y como parametro le vamos a pasar la variable v_idguit que es la que va recorriendo todos los id de las
+guitarras que hay que actualizar y lo multiplicamos por 1.7 para ya obtener nuestro precio final de venta) donde el
+id de la guitarra sea igual a la variable v_idguit que como ya dijimos es la que recorre todos los id de guitarras
+correspondientes. Para finalizar hacemos un END LOOP del bucle y cerramos el cursor. */
+
+DELIMITER //
+CREATE PROCEDURE sp_actcosto_mat (IN id INT,
+								  IN costo INT)
+BEGIN
+	DECLARE v_idguit INT;
+    DECLARE v_finbucle INT DEFAULT 0;
+	DECLARE cursorguit CURSOR FOR SELECT guit_id FROM materiales_guitarras WHERE mat_id = id;
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_finbucle = 1;
+    
+	UPDATE materiales mat
+    SET mat.costo = costo
+    WHERE mat.id = id;
+    
+    OPEN cursorguit;
+    
+    bucle: LOOP
+		
+        FETCH cursorguit INTO v_idguit;
+        
+        IF v_finbucle = 1 THEN
+			LEAVE bucle;
+		END IF;
+        
+    UPDATE guitarras guit
+    SET guit.precio = fx_calc_cst_guit(v_idguit) * 1.7
+    WHERE guit.id = v_idguit;
+    
+    END LOOP bucle;
+CLOSE cursorguit;
+
+END
+// DELIMITER ;
+
+-- Pruebas para stored procedure #5 'sp_actcosto_mat'
+
+/* Actualizamos el costo del material 2 a 2000 (aumento), podemos chequear que su costo ha cambiado en la 
+tabla de materiales y tambien se ha actualizado el costo de las guitarras correspondientes con id 14 y 18,
+podemos chequear la relacion del material con las guitarras en la tabla materiales_guitarras. Tambien
+podremos ver el movimiento en la tabla movimientos_materiales gracias al trigger #3 explicado mas adelante. */
+
+/*
+DELIMITER //
+START TRANSACTION;
+CALL sp_actcosto_mat (2, 2000);
+// DELIMITER ;
+*/
+
+-- Opcion COMMIT
+-- COMMIT;
+
+-- Opcion ROLLBACK
+-- ROLLBACK;
+
+/* Actualizamos el costo del material 26 a 1300 (disminuyo), podemos chequear que su costo ha cambiado en la 
+tabla de materiales y tambien se ha actualizado el costo de las guitarras correspondientes con id 3 y 4,
+podemos chequear la relacion del material con las guitarras en la tabla materiales_guitarras. Tambien
+podremos ver el movimiento en la tabla movimientos_materiales gracias al trigger #3 explicado mas adelante. */
+
+/*
+DELIMITER //
+START TRANSACTION;
+CALL sp_actcosto_mat (26, 1300);
+// DELIMITER ;
+*/
+
+-- Opcion COMMIT
+-- COMMIT;
+
+-- Opcion ROLLBACK
+-- ROLLBACK;
+
 
 -- Creacion de Triggers
 
-/* Trigger #1: Guarda información de fecha y usuario que realizo el movimiento 
-y el id y cliente del pedido sobre el cual se realizo cuando hacemos un INSERT en la 
-tabla pedidos. Utilizamos las variables @nom y @ape para guardar el nombre y el apellido
-de la tabla clientes, luego lo concatenamos en la variable @dat que vamos a utilizar
-para poder insertar el nombre y apellido del cliente dentro del campo cliente de la
-tabla de movimientos. Es muy util a futuro ya que podemos tener registros de quien fue el que 
-ingreso un pedido en el caso de que se haya ingresado mal algun dato.*/
+/* Trigger #1: Guarda información de fecha y usuario que realizo el movimiento y el id y cliente del pedido 
+sobre el cual se realizó cuando hacemos un INSERT en la tabla pedidos. Utilizamos las variables @nom y @ape 
+para guardar el nombre y el apellido de la tabla clientes, luego lo concatenamos en la variable @dat que 
+vamos a utilizar para poder insertar el nombre y apellido del cliente dentro del campo cliente de la tabla 
+de movimientos, también utilizamos los métodos CURDATE, CURTIME y USER para obtener los datos de fecha, 
+horario y usuario que realizó el movimiento. Es muy útil a futuro ya que podemos tener registros de quien 
+fue el que ingreso un pedido en el caso de que se haya ingresado mal algún dato.*/
 
 DELIMITER //
 CREATE TRIGGER `ingreso_nuevo_pedido`
@@ -1313,13 +1443,14 @@ CALL sp_ingresar_detalle_pedido(15,15,32);
 -- COMMIT;
 
 
-/* Trigger #2: Guarda información de fecha y usuario que realizo el movimiento 
-y el id y cliente del pedido sobre el cual se realizo cuando hacemos un DELETE en 
-la tabla pedidos. Utilizamos las variables @nom y @ape para guardar el nombre y el apellido
-de la tabla clientes, luego lo concatenamos en la variable @dat que vamos a utilizar
-para poder insertar el nombre y apellido del cliente dentro del campo cliente de la
-tabla de movimientos. Es muy util a futuro ya que podemos tener registros de quien fue el 
-que elimino un pedido si se elimino mal. */
+/* Trigger #2: Guarda información de fecha y usuario que realizo el movimiento y el id y cliente del 
+pedido sobre el cual se realizó cuando hacemos un DELETE en la tabla pedidos. Utilizamos las variables
+@nom y @ape para guardar el nombre y el apellido de la tabla clientes, luego lo concatenamos en la 
+variable @dat que vamos a utilizar para poder insertar el nombre y apellido del cliente dentro del 
+campo cliente de la tabla de movimientos, también utilizamos los métodos CURDATE, CURTIME y USER 
+para obtener los datos de fecha, horario y usuario que realizó el movimiento. Es muy útil a futuro 
+ya que podemos tener registros de quien fue el que elimino un pedido si se eliminó mal o cual había 
+sido su valor. */
 
 DELIMITER //
 CREATE TRIGGER `borrar_pedido`
@@ -1348,17 +1479,21 @@ CALL sp_eliminar_pedido(10);
 */
 
 -- Opcion COMMIT
--- COMMIT
+-- COMMIT;
 
 -- Opcion ROLLBACK
 -- ROLLBACK;
 
-/* Trigger #3: Guarda información de fecha y usuario que realizo el movimiento 
-y el id, tipo, costo viejo, costo nuevo y diferencia de costo en % 
-del material sobre el cual se realizo cuando hacemos un UPDATE en la tabla materiales.
-Tiene 2 utilidades, la primera es poder saber quien realizo el movimiento en el caso
-de que haya habido algun error a la hora de modificar un precio, la segunda es 
-poder saber en que porcentaje aumento o disminuyo el costo del material*/
+/* Trigger #3: Guarda información de fecha y usuario que realizo el movimiento y el id, tipo, 
+costo viejo, costo nuevo y diferencia de costo en % del material sobre el cual se realizó 
+cuando hacemos un UPDATE en la tabla materiales sobre el campo costo. Gracias al condicional 
+IF donde ponemos que el OLD(viejo) costo tiene que ser diferente del NEW(nuevo) costo este 
+trigger solamente se activara cuando haya actualizaciones de costo, también utilizamos los 
+métodos CURDATE, CURTIME y USER para fecha, hora y usuario del movimiento y el método ROUND 
+para redondear el resultado cuando hacemos el cálculo de la diferencia en porcentaje. Tiene 
+2 utilidades, la primera es poder saber quién realizo el movimiento en el caso de que haya 
+habido algún error a la hora de modificar un precio, la segunda es poder saber en qué porcentaje 
+aumento o disminuyo el costo del material. */
 
 DELIMITER //
 CREATE TRIGGER `actualizar_costo_material`
@@ -1377,11 +1512,13 @@ END
 
 -- Prueba para Trigger #3 'actualizar_costo_material'
 
+/* Con esta prueba aparte de poder ver el movimiento en la tabla movimiento_materiales
+podemos chequear que los precios de las guitarras con id 15, 16, 19 y 20 que son las que
+utilizan este material gracias al 'sp_actcosto_mat'. */
+
 /*
 DELIMITER //
-UPDATE materiales
-SET costo = 2500
-WHERE id = 4;
+CALL sp_actcosto_mat (3, 1800);
 //
 DELIMITER ;
 */
@@ -1393,10 +1530,12 @@ DELIMITER ;
 -- ROLLBACK;
 
 
-/* Trigger #4: Guarda información de fecha y usuario que realizo el movimiento 
-y el id, tipo y costo del material sobre el cual se realizo cuando hacemos 
-un INSERT en la tabla materiales. Su beneficio es poder saber quien hizo el ingreso
-de un nuevo material al sistema en el caso de que se haya ingresado algun dato mal. */
+/* Trigger #4: Guarda información de fecha y usuario que realizo el movimiento y el id, tipo 
+y costo del material sobre el cual se realizó cuando hacemos un INSERT en la tabla materiales. 
+Usamos los métodos CURDATE, CURTIME y USER para traer la fecha, hora y usuario que realizo el
+movimiento. Su beneficio es poder saber quién hizo el ingreso de un nuevo material al sistema 
+en el caso de que se haya ingresado algún dato mal o poder saber en qué fecha ingreso por 
+última vez un material para calcular cuánto hubo de gasto.  */
 
 DELIMITER //
 CREATE TRIGGER `ingresar_material`
